@@ -1,0 +1,87 @@
+
+networks:
+  internal-net:
+
+volumes:
+  tmp-shared-files:
+    driver: local
+
+services:
+  redis:
+    networks:
+      - internal-net
+    image: redis:6
+    restart: always
+    expose:
+      - '6379'
+
+  db:
+    networks:
+      - internal-net
+    image: postgres:14.0
+    restart: always
+    volumes:
+      - ./data/pgdata:/var/lib/postgresql/data
+    expose:
+      - '5432'
+    env_file:
+      - ./.db.env
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    command: ['-c', 'max_connections=200']
+
+  app:
+    build:
+      dockerfile: ./docker/Dockerfile
+      context: ./backend
+    env_file:
+      - ./.backend.env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - internal-net
+    volumes:
+      - tmp-shared-files:/tmp/
+
+  celery-worker:
+    build:
+      dockerfile: ./docker/Dockerfile
+      context: ./backend
+    volumes:
+      - tmp-shared-files:/tmp/
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - internal-net
+    env_file:
+      - ./.backend.env
+    entrypoint: 'celery -A app.core.celery.celery worker -l info'
+
+  ui:
+    build:
+      dockerfile: ./docker/Dockerfile
+      context: ./frontend
+    networks:
+      - internal-net
+
+  web:
+    networks:
+      - internal-net
+    image: nginx:latest
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:8003:80'
+    volumes:
+      - ./etc/nginx:/etc/nginx/conf.d
+    depends_on:
+      - app
+      - ui

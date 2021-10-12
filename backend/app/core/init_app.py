@@ -23,13 +23,6 @@ def create_on_shutdown_handler(app: FastAPI) -> Callable:
 
 
 def init_middlewares(app: FastAPI) -> None:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
     pass
 
 
